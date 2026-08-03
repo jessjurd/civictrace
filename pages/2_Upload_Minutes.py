@@ -1,4 +1,4 @@
-mport streamlit as st
+import streamlit as st
 from database import add_minutes, get_all_minutes, add_report
 from parser import extract_motions, extract_conflicts
 from datetime import date
@@ -9,7 +9,6 @@ st.caption(
     "The app extracts motions, FOR/AGAINST votes, and conflict-of-interest disclosures."
 )
 
-# ---------- Upload form ----------
 with st.form("upload_minutes_form", clear_on_submit=False):
     col1, col2 = st.columns(2)
     with col1:
@@ -93,12 +92,11 @@ if submitted:
             if conflicts:
                 st.info(f"Found *{len(conflicts)}* conflict-of-interest disclosure(s).")
 
-# ---------- Conflicts of interest ----------
 conflicts = st.session_state.get("extracted_conflicts", [])
 if conflicts:
     st.markdown("---")
     st.subheader("⚖️ Conflict of interest disclosures")
-    st.caption("These were detected in the minutes. They are shown for reference and can be noted against reports.")
+    st.caption("These were detected in the minutes.")
 
     for c in conflicts:
         with st.container(border=True):
@@ -111,15 +109,11 @@ if conflicts:
             if c.get("action"):
                 st.caption(f"Action: {c['action']}")
 
-# ---------- Review & Import extracted motions ----------
 motions = st.session_state.get("extracted_motions", [])
 if motions:
     st.markdown("---")
     st.subheader("Review extracted motions")
-    st.caption(
-        "Tick the ones you want to import as Reports. "
-        "Votes (For/Against) are pre-filled when detected — edit if needed."
-    )
+    st.caption("Tick the ones you want to import as Reports.")
 
     select_all = st.checkbox("Select all", value=True, key="select_all_motions")
 
@@ -143,8 +137,6 @@ if motions:
             with c2:
                 if m.get("votes"):
                     vote_summary = ", ".join(f"{k}: {v}" for k, v in list(m["votes"].items())[:8])
-                    if len(m["votes"]) > 8:
-                        vote_summary += f" … (+{len(m['votes'])-8} more)"
                     st.caption(f"Votes: {vote_summary}")
                 else:
                     st.caption("No individual votes detected")
@@ -160,61 +152,3 @@ if motions:
             m["description"] = new_desc
 
             with st.expander("Show detected text"):
-                st.text(m.get("raw_block", ""))
-
-    if st.button("Import selected as Reports", type="primary", use_container_width=True):
-        if not selected_indices:
-            st.warning("No motions selected.")
-        else:
-            meeting_date = st.session_state.get("extract_meeting_date", str(date.today()))
-            meeting_title = st.session_state.get("extract_meeting_title", "Council Meeting")
-            conflicts = st.session_state.get("extracted_conflicts", [])
-
-            count = 0
-            for i in selected_indices:
-                m = motions[i]
-                notes_parts = ["Imported from minutes upload"]
-                for c in conflicts:
-                    if (
-                        c["councillor"] in (m.get("votes") or {})
-                        or c["councillor"] == m.get("mover")
-                        or (c.get("item_ref") and c["item_ref"][:20].lower() in m["motion_title"].lower())
-                    ):
-                        notes_parts.append(
-                            f"Conflict: {c['councillor']} – {c['interest_type']}"
-                            + (f" ({c['reason'][:120]})" if c.get("reason") else "")
-                        )
-
-                add_report(
-                    meeting_date=meeting_date,
-                    meeting_title=meeting_title,
-                    motion_title=m["motion_title"] or "Untitled motion",
-                    description=m["description"] or "",
-                    mover=m["mover"] or "",
-                    seconder=m["seconder"] or "",
-                    outcome=m["outcome"] or "Carried",
-                    votes=m.get("votes") or {},
-                    notes=" | ".join(notes_parts),
-                )
-                count += 1
-
-            st.success(
-                f"Imported *{count}* report(s) with votes and any matched conflict notes. "
-                "View them on the Dashboard or Manage & Delete page."
-            )
-            st.session_state["extracted_motions"] = []
-            st.session_state["extracted_conflicts"] = []
-            st.rerun()
-
-# ---------- Previously uploaded minutes ----------
-st.markdown("---")
-st.subheader("Previously uploaded minutes")
-minutes = get_all_minutes()
-if not minutes:
-    st.info("No minutes uploaded yet.")
-else:
-    for m in minutes:
-        with st.expander(f"{m['meeting_date']}  ·  {m['meeting_title']}"):
-            st.caption(f"File: {m['filename']}  ·  Uploaded: {m['uploaded_at']}")
-            preview = (m["content_text"] or "")[:900]
-            st.text(preview + ("..." if len(m["content_text"] or "") > 900 else ""))
